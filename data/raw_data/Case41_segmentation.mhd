@@ -1,0 +1,13 @@
+ObjectType = Image
+NDims = 3
+BinaryData = True
+BinaryDataByteOrderMSB = False
+CompressedData = False
+TransformMatrix = 1 0 0 0 0.990983 0.133986 0 -0.133986 0.990983
+Offset = -100.411 -98.2238 -85.5803
+CenterOfRotation = 0 0 0
+AnatomicalOrientation = RAI
+ElementSpacing = 0.625 0.625 3.6
+DimSize = 320 320 24
+ElementType = MET_CHAR
+ElementDataFile = Case41_segmentation.raw
