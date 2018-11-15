@@ -342,3 +342,95 @@ class DecoderBlock(nn.Module):
 
     def forward(self, x):
         return self.block(x)
+    
+    
+########################################
+class ConvNoPooling(nn.Module):
+    '''(conv => BN => ReLU)'''
+
+    def __init__(self, in_ch, out_ch, kernel_size):
+        super(ConvNoPooling, self).__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, kernel_size, padding=0),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x):
+        x = self.conv(x)
+        return x
+    
+class ConvPooling(nn.Module):
+    '''(conv => BN => ReLU)'''
+
+    def __init__(self, in_ch, out_ch, kernel_size):
+        super(ConvPooling, self).__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, kernel_size, padding=1),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2)
+        )
+
+    def forward(self, x):
+        x = self.conv(x)
+        return x
+    
+class MultiResolutionClassifier(nn.Module):
+    def __init__(self, num_classes = 1, num_channels = 1):
+        super(MultiResolutionClassifier, self).__init__()
+        
+        self.conv11 = ConvPooling(num_channels, 24, 5)
+        self.conv12 = ConvPooling(24, 32, 3)
+        self.conv13 = ConvNoPooling(32, 48, 3)
+        self.flatten1 = torch.nn.Linear(3*3*48, 256)
+        
+        self.conv21 = ConvPooling(num_channels, 24, 7)
+        self.conv22 = ConvPooling(24, 32, 5)
+        self.conv23 = ConvPooling(32, 48, 3)
+        self.flatten2 = torch.nn.Linear(5*5*48, 256)
+        
+        self.conv31 = ConvPooling(num_channels, 24, 9)
+        self.conv32 = ConvPooling(24, 32, 7)
+        self.conv33 = ConvPooling(32, 48, 5)
+        self.flatten3 = torch.nn.Linear(6*6*48, 256)
+        
+        self.outc = torch.nn.Linear(256*3, num_classes)
+        if num_classes == 1:
+            self.out_softmax = torch.nn.Sigmoid()
+        else:
+            self.out_softmax = torch.nn.Softmax()
+        
+    def forward_small_path(self, x):
+        x = self.conv11(x)
+        x = self.conv12(x)
+        x = self.conv13(x)
+        x = x.view(x.shape[0], -1)
+        x = self.flatten1(x)
+        return x
+    
+    def forward_middle_path(self, x):
+        x = self.conv21(x)
+        x = self.conv22(x)
+        x = self.conv23(x)
+        x = x.view(x.shape[0], -1)
+        x = self.flatten2(x)
+        return x
+    
+    def forward_big_path(self, x):
+        x = self.conv31(x)
+        x = self.conv32(x)
+        x = self.conv33(x)
+        x = x.view(x.shape[0], -1)
+        x = self.flatten3(x)
+        return x
+        
+    def forward(self, patch1, patch2, patch3):
+        x1 = self.forward_small_path(patch1)
+        x2 = self.forward_middle_path(patch2)
+        x3 = self.forward_big_path(patch3)
+        x = torch.cat([x1,x2,x3], 1)
+        x = self.outc(x)
+        x = self.out_softmax(x)
+        return x
+     

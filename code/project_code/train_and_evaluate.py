@@ -17,10 +17,11 @@ from timeit import default_timer as timer
 import random
 
 from logger import Logger
-from utils import set_random_seeds, show_grid, show_image
-from datasets import Promise2012_Dataset
-from losses import CombinedLoss
+from utils import *
+from datasets import Promise2012_Dataset, Promise2012_Dataset_Pixelwise
+from losses import CombinedLoss, BCELoss2d
 from metrics import DiceCoeff
+from nets import *
 
 import sys
 import matplotlib.pyplot as plt
@@ -36,11 +37,13 @@ def train_net(net,
               logging=False, logging_plots=False,
               eval_train=False,
               aggregate_epochs=1,
-              start_evaluation_epoch=1,
+              start_evaluation_epoch=1, start_evaluation_samples=1000,
               train_patients=[],
               val_patients=[],
-              dir_images='', dir_masks='', dir_checkpoints='',
-              verbose=False, display_predictions=False, display_differences=False):
+              dir_images='', dir_masks='', dir_checkpoints='', start_display_epoch=10,
+              verbose=False, display_predictions=False, display_differences=False,
+              MultiResolutionClassifier=False,
+              dicom_format = False):
 
     set_random_seeds(gpu)
 
@@ -67,11 +70,14 @@ def train_net(net,
     trainable_parameters = filter(lambda p: p.requires_grad, net.parameters())
     if verbose:
         print 'Number of trainable parameters sets %d' % len(trainable_parameters)
-
-    if gpu:
-        criterion = CombinedLoss(is_dice_log=False).cuda()
+    
+    if MultiResolutionClassifier:
+        criterion = BCELoss2d()
     else:
         criterion = CombinedLoss(is_dice_log=False)
+        
+    if gpu:
+        criterion = criterion.cuda()
 
     optimizer = optim.Adam(trainable_parameters, lr=lr)
     #optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.99, weight_decay=0.0001)
@@ -81,14 +87,22 @@ def train_net(net,
     total_number_of_samples = 0
 
     net.train()
-
-    train_dataset = Promise2012_Dataset(
-        dir_images, dir_masks, train_patients, augment=True, gpu=gpu, image_dim=image_dim)
-    train_dataset_without_augmentations = Promise2012_Dataset(
-        dir_images, dir_masks, train_patients, augment=False, gpu=gpu, image_dim=image_dim)
-    val_dataset = Promise2012_Dataset(
-        dir_images, dir_masks, val_patients, augment=False, gpu=gpu, image_dim=image_dim)
-
+    print type(net)
+    if MultiResolutionClassifier:
+        train_dataset = Promise2012_Dataset_Pixelwise(
+            dir_images, dir_masks, train_patients, augment=True, gpu=gpu, image_dim=image_dim)
+        train_dataset_without_augmentations = Promise2012_Dataset_Pixelwise(
+            dir_images, dir_masks, train_patients, augment=False, gpu=gpu, image_dim=image_dim)
+        val_dataset = Promise2012_Dataset_Pixelwise(
+            dir_images, dir_masks, val_patients, augment=False, gpu=gpu, image_dim=image_dim)
+    else:
+        train_dataset = Promise2012_Dataset(
+            dir_images, dir_masks, train_patients, augment=True, gpu=gpu, image_dim=image_dim)
+        train_dataset_without_augmentations = Promise2012_Dataset(
+            dir_images, dir_masks, train_patients, augment=False, gpu=gpu, image_dim=image_dim)
+        val_dataset = Promise2012_Dataset(
+            dir_images, dir_masks, val_patients, augment=False, gpu=gpu, image_dim=image_dim)
+        
     train_loader = torch.utils.data.DataLoader(dataset=train_dataset,
                                                batch_size=batch_size,
                                                shuffle=True,
@@ -118,41 +132,58 @@ def train_net(net,
             
             epoch_loss, epoch_bce_loss, epoch_dice_loss = 0.0, 0.0, 0.0
 
-            net.train()
-
+            net.train()         
+            
             start_epoch_time = timer()
 
             start_epoch_total_number_of_samples = total_number_of_samples
 
             iters_count = 0
             for iter, b in enumerate(train_loader):
-
-                images, true_masks, filenames = b
+             
+                if MultiResolutionClassifier:
+                    images1, images2, images3, true_masks, filenames, index = b
+                    #print len(index),index[0].shape
+                else:    
+                    images, true_masks, filenames = b
                 
                 if gpu:
-                    images, true_masks = Variable(
-                        images.cuda()), Variable(true_masks.cuda())
-                    #images1 = Variable(images1.cuda())
-                    #images2 = Variable(images2.cuda())
-                    #images3 = Variable(images3.cuda())
-                    
-                masks_probs = net(images)
+                    if MultiResolutionClassifier:
+                        images1 = Variable(images1.cuda())
+                        images2 = Variable(images2.cuda())
+                        images3 = Variable(images3.cuda())
+                        true_masks = Variable(true_masks.cuda())
+                        
+                        masks_probs = net(images1, images2, images3)
+                        
+                    else:
+                        images, true_masks = Variable(
+                            images.cuda()), Variable(true_masks.cuda())
+                        
+                        masks_probs = net(images)                              
 
                 masks_probs_flat = masks_probs.view(-1)
                 true_masks_flat = true_masks.view(-1)
+                
+                if MultiResolutionClassifier:
+                    loss = criterion(masks_probs_flat, true_masks_flat)
+                    epoch_loss += loss.item()
+                    #print masks_probs_flat, true_masks_flat, loss
 
-                loss, bce_loss, dice_loss = criterion(
-                    masks_probs_flat, true_masks_flat)
-                epoch_loss += loss.item()
-                epoch_bce_loss += bce_loss.item()
-                epoch_dice_loss += dice_loss.item()
-
-                # print '%d --- loss: %.3f' % (iter, loss.item())
+                else:
+                    loss, bce_loss, dice_loss = criterion(
+                        masks_probs_flat, true_masks_flat)
+                    epoch_loss += loss.item()
+                    epoch_bce_loss += bce_loss.item()
+                    epoch_dice_loss += dice_loss.item()
+                    
+                #print '%d --- loss: %.3f' % (iter, loss.item())
+                
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
-                total_number_of_samples += images.shape[0]
+                total_number_of_samples += true_masks.shape[0]
 
                 iters_count += 1
 
@@ -162,16 +193,18 @@ def train_net(net,
             if (total_number_of_samples // 1000) != (start_epoch_total_number_of_samples // 1000):
                 scheduler.step()
 
-            epoch_to_display = (epoch + 1) % (aggregate_epochs // 2) == 0
+            epoch_to_display = (epoch + 1) % (1 + (aggregate_epochs // 2)) == 0
 
 
-            if (epoch + 1) >= start_evaluation_epoch:
+            if (epoch + 1) >= start_evaluation_epoch or total_number_of_samples >= start_evaluation_samples:
                 mean_eval_score, eval_scores = evaluate_net(net, val_loader,
                                                        gpu=gpu, batch_size=batch_size, 
-                                                       display_predictions=display_predictions,
-                                                       display_differences=display_differences,
+                                                       display_predictions=(display_predictions and epoch >= start_display_epoch),
+                                                       display_differences=(display_differences and epoch >= start_display_epoch),
                                                        aggregate_epochs=aggregate_epochs, 
-                                                       filename_masks_probs=filename_masks_probs)
+                                                       filename_masks_probs=filename_masks_probs,
+                                                           MultiResolutionClassifier=MultiResolutionClassifier,
+                                                           dicom_format = dicom_format)
 
                 if epoch_to_display:
                     if verbose:
@@ -197,10 +230,12 @@ def train_net(net,
                 if eval_train:
                     mean_eval_train_score, eval_train_scores = evaluate_net(net, train_loader_without_augmentations,
                                                        gpu=gpu, batch_size=batch_size, 
-                                                       display_predictions=display_predictions,
-                                                       display_differences=display_differences,
+                                                       display_predictions=(display_predictions and epoch >= start_display_epoch),
+                                                       display_differences=(display_differences and epoch >= start_display_epoch),
                                                        aggregate_epochs=aggregate_epochs, 
-                                                       filename_masks_probs=filename_masks_probs)
+                                                       filename_masks_probs=filename_masks_probs,
+                                                                           MultiResolutionClassifier=MultiResolutionClassifier,
+                                                                           dicom_format = dicom_format)
                     
                     if epoch_to_display:
                         if verbose:
@@ -254,31 +289,46 @@ def train_net(net,
     else:
         return best_eval_scores, net
 
-def evaluate_net(net, eval_loader, gpu=False, batch_size=1, display_predictions=False, display_differences=False, aggregate_epochs=1, filename_masks_probs={}):
+def evaluate_net(net, eval_loader, gpu=False, batch_size=1, display_predictions=False, display_differences=False, aggregate_epochs=1, filename_masks_probs={}, MultiResolutionClassifier=False, dim = (256, 256),dicom_format = False):
 
     net.eval()
 
     filename_score = {}
+    filename_masks_true = {}
     diffs = []
+    
+    start_eval_time = timer()
+    
     for iter, b in enumerate(eval_loader):
 
-        images, true_masks, filenames = b
-
+        if MultiResolutionClassifier:
+            images1, images2, images3, true_masks, filenames, index = b
+            images_true = images1.float().detach()
+        else:    
+            images, true_masks, filenames = b
+            images_true = images.float().detach()
+            
         if gpu:
-            images, true_masks = Variable(
-                images.cuda()), Variable(true_masks.cuda())
-            #images1 = Variable(images1.cuda())
-            #images2 = Variable(images2.cuda())
-            #images3 = Variable(images3.cuda())
+            if MultiResolutionClassifier:
+                images1 = Variable(images1.cuda())
+                images2 = Variable(images2.cuda())
+                images3 = Variable(images3.cuda())
+                true_masks = Variable(true_masks.cuda())
 
-        masks_probs = net(images)
+                masks_probs = net(images1, images2, images3)
 
+            else:
+                images, true_masks = Variable(
+                    images.cuda()), Variable(true_masks.cuda())
+
+                masks_probs = net(images)  
+        
+        
         masks_probs =  masks_probs.float().detach()
         true_masks = true_masks.float().detach()
-        #print masks_probs.type(), masks_probs
         
         for i in range(masks_probs.shape[0]):
-
+            
             if aggregate_epochs > 1:
                 
                 if filenames[i] not in filename_masks_probs:
@@ -294,10 +344,11 @@ def evaluate_net(net, eval_loader, gpu=False, batch_size=1, display_predictions=
 
                 aggregated_prediction = torch.mean(
                     filename_masks_probs[filenames[i]], dim=0).cuda()
-
+                
                 cur_score = DiceCoeff(aggregated_prediction, true_masks[i])
                 s1 = torch.sum((true_masks[i]>0.5).float()).cpu().item()
                 s2 = torch.sum((aggregated_prediction>0.5).float()).cpu().item()
+                filename_score[filenames[i]] = cur_score
                 
                 if cur_score < 0.8:
                     if s1 != 0:
@@ -308,23 +359,57 @@ def evaluate_net(net, eval_loader, gpu=False, batch_size=1, display_predictions=
                     diffs.append(diff)
                 
                 if display_predictions:
-                    grid = torchvision.utils.make_grid(
-                        filename_masks_probs[filenames[i]], nrow=5, padding=10, normalize=True)
-                    show_grid(grid, title = 'predictions')
+                    if not dicom_format:
+                        show_image(true_masks[i], title = 'ground_truth')
+                        grid = torchvision.utils.make_grid(
+                            filename_masks_probs[filenames[i]], nrow=5, padding=10, normalize=True)
+                        show_grid(grid, title = 'predictions')
+                    else:
+                        patient = int(filenames[i].split('_')[0].replace('Case',''))
+                        slice = int(filenames[i].split('_')[1].replace('.jpg',''))
+                        #save_dicom(true_masks[i].detach().cpu().numpy(), 'true_mask_%d_%d' % (patient, slice), patient, slice)
+                        filename = 'output/true_mask_%d_%d.png' % (patient, slice)
+                        save_prediction(images_true[i], true_masks[i], aggregated_prediction,  filename)
+                            
                 if display_differences:
-                    grid = torchvision.utils.make_grid(
-                        true_masks[i]-filename_masks_probs[filenames[i]], nrow=5, padding=10, normalize=True)
-                    show_grid(grid, title = 'ground truth minus predictions')
+                    if not dicom_format:
+                        grid = torchvision.utils.make_grid(
+                            true_masks[i]-filename_masks_probs[filenames[i]], nrow=5, padding=10, normalize=True)
+                        show_grid(grid, title = 'ground truth minus predictions')
 
             else:
-                cur_score = DiceCoeff(masks_probs[i], true_masks[i])
+                if MultiResolutionClassifier:
+                    if filenames[i] not in filename_score:
+                        filename_masks_true[filenames[i]] = torch.tensor(np.zeros((1, dim[0], dim[1]), dtype = np.float32)).cuda()
+                        filename_masks_probs[filenames[i]] = torch.tensor(np.zeros((1, dim[0], dim[1]), dtype = np.float32)).cuda()
+                        filename_score[filenames[i]] = 0
+                    filename_masks_probs[filenames[i]][0, index[0][i], index[1][i]] = masks_probs[i]
+                    filename_masks_true[filenames[i]][0, index[0][i], index[1][i]] = true_masks[i]
+                else:
+                    cur_score = DiceCoeff(masks_probs[i], true_masks[i])
+                    filename_score[filenames[i]] = cur_score
+                
+                if display_predictions:
+                    if not MultiResolutionClassifier:
+                        show_image(true_masks[i], title = 'ground_truth')
+                if display_differences:
+                    if not MultiResolutionClassifier:
+                        show_image(true_masks[i]-filename_masks_probs[filenames[i]], title = 'ground truth minus predictions')
 
-            filename_score[filenames[i]] = cur_score
-    
+    if MultiResolutionClassifier:             
+        for file in filename_masks_probs:     
+            filename_score[file] = DiceCoeff(filename_masks_probs[file], filename_masks_true[file])
+            print file, filename_score[file]
+            if display_predictions:
+                show_image(filename_masks_true[file], title = file + 'true')
+                show_image(filename_masks_probs[file], title = file + 'pred')
+                 
     torch.cuda.empty_cache()
     diffs = np.array(diffs).astype(np.float32)
     #plt.hist(diffs, bins = 20)
     #plt.show()
+    print 'eval time: ', timer() - start_eval_time
     print 'over segmentation cases: %d | under segmentation cases: %d' % (np.where(diffs>1)[0].shape[0], np.where(diffs<1)[0].shape[0])
-    
+
+            
     return np.mean(filename_score.values()), filename_score

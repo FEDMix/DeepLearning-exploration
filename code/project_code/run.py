@@ -15,13 +15,13 @@ from timeit import default_timer as timer
 import json
 
 dir_images = '/export/scratch1/home/arkadiy/fedmix/prostate_challenge/data/images/'
-dir_masks = '/export/scratch1/home/arkadiy/fedmix/prostate_challenge/data/segmentations_without_variation/'
+dir_masks = '/export/scratch1/home/arkadiy/fedmix/prostate_challenge/data/segmentations_with_variation_mixed/'
 dir_checkpoints = '/export/scratch1/home/arkadiy/fedmix/prostate_challenge/checkpoints/'
 dir_evaluations = '/export/scratch1/home/arkadiy/fedmix/prostate_challenge/evaluations'
 
-N_TRAIN_PATIENTS = 5
+MIN_VAL_COUNT = 50
+N_TRAIN_PATIENTS = 10
 
-@profile
 def run_training(array):
     
     try:
@@ -62,7 +62,7 @@ def run_training(array):
             
             print current_evaluations_count, '\n\n', current_evaluations_results
         
-            while np.sum(current_evaluations_count.values()) < 50:
+            while np.sum(current_evaluations_count.values()) < MIN_VAL_COUNT:
                 
                 print np.sum(current_evaluations_count.values())
 
@@ -75,15 +75,15 @@ def run_training(array):
                 net = torch.nn.DataParallel(net).cuda()
 
                 val_dices, net = train_net(net=net,
-                                           epochs=20,
-                                           maximum_number_of_samples=100000,
+                                           epochs=300,
+                                           maximum_number_of_samples=80000,
                                            batch_size=64,
                                            lr=0.001,
                                            gpu=True,
                                            image_dim=(256, 256),
-                                           save_net='both_parts.pth',
+                                           save_net='',
                                            aggregate_epochs=20,
-                                           start_evaluation_epoch=1,
+                                           start_evaluation_epoch=1000, start_evaluation_samples=50000,
                                            verbose=True,
                                            display_predictions=False,
                                            display_differences=False,
