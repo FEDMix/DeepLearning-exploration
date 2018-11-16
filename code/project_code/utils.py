@@ -149,7 +149,7 @@ def save_dicom(image, filename, patient, volume):
     ds.save_as(filename)
     return
 
-def save_prediction(x_test, y_test, prediction, filename):
+def save_prediction(x_test, y_test, prediction, filename, score):
     if len(x_test.shape) == 3:
         x_test = np.expand_dims(x_test, axis=0)
         y_test = np.expand_dims(y_test, axis=0)
@@ -174,7 +174,7 @@ def save_prediction(x_test, y_test, prediction, filename):
     
     #print x_test.shape, y_test.shape, prediction.shape
     test_size = x_test.shape[0]
-    fig, ax = plt.subplots(nrows = test_size, ncols = 3, figsize=(22,8), sharey=False, sharex=False)
+    fig, ax = plt.subplots(nrows = test_size, ncols = 4, figsize=(24,6), sharey=False, sharex=False)
     
     #divider = make_axes_locatable(ax)
     #ccax = divider.append_axes("right", size="5%", pad=0.05)
@@ -188,10 +188,14 @@ def save_prediction(x_test, y_test, prediction, filename):
         #plt.colorbar(cax, ax=ax[i,1])
         cax = ax[i, 2].imshow(prediction[i])
         #plt.colorbar(cax, cax=ccax)
+        cax = ax[i, 3].imshow(y_test[i] - prediction[i])
+        #plt.colorbar(cax, cax=ccax)
+        
         if i==0:
             ax[i, 0].set_title("input scan")
             ax[i, 1].set_title("true segmentation")
             ax[i, 2].set_title("prediction")
+            ax[i, 3].set_title("difference, Dice %.3f" % score)
     fig.tight_layout()
     
     fig.savefig(filename)

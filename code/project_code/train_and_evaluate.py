@@ -368,8 +368,8 @@ def evaluate_net(net, eval_loader, gpu=False, batch_size=1, display_predictions=
                         patient = int(filenames[i].split('_')[0].replace('Case',''))
                         slice = int(filenames[i].split('_')[1].replace('.jpg',''))
                         #save_dicom(true_masks[i].detach().cpu().numpy(), 'true_mask_%d_%d' % (patient, slice), patient, slice)
-                        filename = 'output/true_mask_%d_%d.png' % (patient, slice)
-                        save_prediction(images_true[i], true_masks[i], aggregated_prediction,  filename)
+                        filename = 'output/%d_%d.png' % (patient, slice)
+                        save_prediction(images_true[i], true_masks[i], aggregated_prediction, filename, cur_score)
                             
                 if display_differences:
                     if not dicom_format:
