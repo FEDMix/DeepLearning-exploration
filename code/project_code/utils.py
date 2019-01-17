@@ -62,7 +62,7 @@ def random_crop_by_dim(image, mask, new_size=(128, 128)):
 
 def show_image(image, title = ''):
     np_image = image.detach().cpu().numpy().astype(np.float32)
-    print np.mean(np_image)
+    print(np.mean(np_image))
     if np_image.shape[0] > 1:
         plt.imshow(np.transpose(np_image, (1, 2, 0)), interpolation='nearest', cmap='gray', norm=NoNorm())
     else:
@@ -73,7 +73,7 @@ def show_image(image, title = ''):
 
 def show_grid(images, title = ''):
     np_images = images.detach().cpu().numpy().astype(np.float32)
-    print np.mean(np_images)
+    print(np.mean(np_images))
     if np_images.shape[0] > 1:
         plt.imshow(np.transpose(np_images, (1, 2, 0)), interpolation='nearest', cmap='gray', norm=NoNorm())
     else:
@@ -118,7 +118,7 @@ def save_dicom(image, filename, patient, volume):
     ds.ContentDate = dt.strftime('%Y%m%d')
     timeStr = dt.strftime('%H%M%S')  # long format with micro seconds
     ds.ContentTime = timeStr
-    print ds.ContentTime
+    print(ds.ContentTime)
     
     ds.PatientName = str(patient)
     ds.PatientID = str(patient)
@@ -144,7 +144,7 @@ def save_dicom(image, filename, patient, volume):
     ds.is_little_endian = True
     ds.is_implicit_VR = True
     ds.PixelData = image.tostring()
-    print len(image.tostring())
+    print(len(image.tostring()))
 
     ds.save_as(filename)
     return

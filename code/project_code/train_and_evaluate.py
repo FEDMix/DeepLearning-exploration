@@ -1,5 +1,5 @@
 import operator
-import cPickle as pickle
+import pickle as pickle
 import sys
 import os
 from optparse import OptionParser
@@ -67,9 +67,9 @@ def train_net(net,
 
     N_train = len(train_patients)
 
-    trainable_parameters = filter(lambda p: p.requires_grad, net.parameters())
+    trainable_parameters = list(filter(lambda p: p.requires_grad, net.parameters()))
     if verbose:
-        print 'Number of trainable parameters sets %d' % len(trainable_parameters)
+        print('Number of trainable parameters sets %d' % len(trainable_parameters))
     
     if MultiResolutionClassifier:
         criterion = BCELoss2d()
@@ -87,7 +87,7 @@ def train_net(net,
     total_number_of_samples = 0
 
     net.train()
-    print type(net)
+    print(type(net))
     if MultiResolutionClassifier:
         train_dataset = Promise2012_Dataset_Pixelwise(
             dir_images, dir_masks, train_patients, augment=True, gpu=gpu, image_dim=image_dim)
@@ -160,7 +160,22 @@ def train_net(net,
                         images, true_masks = Variable(
                             images.cuda()), Variable(true_masks.cuda())
                         
-                        masks_probs = net(images)                              
+                        masks_probs = net(images)
+
+                else:
+                    if MultiResolutionClassifier:
+                        images1 = Variable(images1)
+                        images2 = Variable(images2)
+                        images3 = Variable(images3)
+                        true_masks = Variable(true_masks)
+
+                        masks_probs = net(images1, images2, images3)
+
+                    else:
+                        images, true_masks = Variable(
+                            images), Variable(true_masks)
+
+                        masks_probs = net(images)
 
                 masks_probs_flat = masks_probs.view(-1)
                 true_masks_flat = true_masks.view(-1)
@@ -254,9 +269,9 @@ def train_net(net,
             end_epoch_time = timer()
 
             if verbose:
-                print 'Epoch %d finished ! Combined Loss: %.3f' % (epoch + 1, epoch_loss / iters_count)
-                print 'Epoch %d finished ! BCE Loss: %.3f' % (epoch + 1, epoch_bce_loss / iters_count)
-                print 'Epoch %d finished ! Score: %.3f' % (epoch + 1, -epoch_dice_loss / iters_count)
+                print('Epoch %d finished ! Combined Loss: %.3f' % (epoch + 1, epoch_loss / iters_count))
+                print('Epoch %d finished ! BCE Loss: %.3f' % (epoch + 1, epoch_bce_loss / iters_count))
+                print('Epoch %d finished ! Score: %.3f' % (epoch + 1, -epoch_dice_loss / iters_count))
                 print('Epoch time: %.1f seconds' %
                       (end_epoch_time - start_epoch_time))
                 print('Number of processed samples: %d' %
@@ -399,7 +414,7 @@ def evaluate_net(net, eval_loader, gpu=False, batch_size=1, display_predictions=
     if MultiResolutionClassifier:             
         for file in filename_masks_probs:     
             filename_score[file] = DiceCoeff(filename_masks_probs[file], filename_masks_true[file])
-            print file, filename_score[file]
+            print(file, filename_score[file])
             if display_predictions:
                 show_image(filename_masks_true[file], title = file + 'true')
                 show_image(filename_masks_probs[file], title = file + 'pred')
@@ -408,8 +423,8 @@ def evaluate_net(net, eval_loader, gpu=False, batch_size=1, display_predictions=
     diffs = np.array(diffs).astype(np.float32)
     #plt.hist(diffs, bins = 20)
     #plt.show()
-    print 'eval time: ', timer() - start_eval_time
-    print 'over segmentation cases: %d | under segmentation cases: %d' % (np.where(diffs>1)[0].shape[0], np.where(diffs<1)[0].shape[0])
+    print('eval time: ', timer() - start_eval_time)
+    print('over segmentation cases: %d | under segmentation cases: %d' % (np.where(diffs>1)[0].shape[0], np.where(diffs<1)[0].shape[0]))
 
             
     return np.mean(filename_score.values()), filename_score

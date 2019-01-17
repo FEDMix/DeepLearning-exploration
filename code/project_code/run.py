@@ -25,7 +25,7 @@ N_TRAIN_PATIENTS = 10
 def run_training(array):
     
     try:
-        print "received array", array
+        print("received array", array)
 
         N_PATIENTS = len(array)
 
@@ -33,7 +33,7 @@ def run_training(array):
         patients_parts[0] = [i for i in range(N_PATIENTS) if array[i] == 1]
         patients_parts[1] = [i for i in range(N_PATIENTS) if array[i] == 0]
 
-        print 'parts:', patients_parts
+        print( 'parts:', patients_parts)
 
         np.random.seed(1)
         total_result_all_parts = 0.0
@@ -52,24 +52,24 @@ def run_training(array):
 
             for file in current_evaluations_files:
                 evaluation_results = json.load(open(os.path.join(dir_evaluations, file),'r'))
-                print 'found set', evaluation_results['train_patients'], 'current set: ', current_patients
+                print('found set', evaluation_results['train_patients'], 'current set: ', current_patients)
                 if set(evaluation_results['train_patients']) < set(current_patients):
                     for patient in evaluation_results['val_patients']:
                         if int(patient) in current_patients:
-                            print patient, evaluation_results['val_patients'][patient]
+                            print(patient, evaluation_results['val_patients'][patient])
                             current_evaluations_results[int(patient)] += evaluation_results['val_patients'][patient]
                             current_evaluations_count[int(patient)] += 1
             
-            print current_evaluations_count, '\n\n', current_evaluations_results
+            print(current_evaluations_count, '\n\n', current_evaluations_results)
         
             while np.sum(current_evaluations_count.values()) < MIN_VAL_COUNT:
                 
-                print np.sum(current_evaluations_count.values())
+                print(np.sum(current_evaluations_count.values())
 
                 np.random.seed(int(timer()))
                 train_patients = np.random.permutation(current_patients)[:N_TRAIN_PATIENTS]
                 val_patients = [patient for patient in range(N_PATIENTS) if patient not in train_patients]
-                print train_patients, val_patients
+                print(train_patients, val_patients)
 
                 net = UNet_light(n_channels=1, n_classes=1)
                 net = torch.nn.DataParallel(net).cuda()
@@ -109,7 +109,7 @@ def run_training(array):
                         current_evaluations_results[patient] += val_dices_by_patient['val_patients'][patient]
                         current_evaluations_count[patient] += 1
 
-                print current_evaluations_results, current_evaluations_count
+                print(current_evaluations_results, current_evaluations_count)
                 json.dump(val_dices_by_patient, open(os.path.join(dir_evaluations, '%d.json' % len(os.listdir(dir_evaluations))),'w'))
 
             total_result = 0.0
@@ -120,14 +120,14 @@ def run_training(array):
                     non_zero_patients += 1
 
             total_result /= non_zero_patients
-            print total_result
+            print(total_result)
             total_result_all_parts += total_result
 
         total_result_all_parts /= len(patients_parts)
         return total_result_all_parts
 
     except Exception as e:
-        print e
+        print(e)
         return 0.0
 
 if __name__ == '__main__':
