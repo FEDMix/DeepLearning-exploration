@@ -4,6 +4,7 @@ from torch.nn import Conv2d
 import numpy as np
 from scipy import stats as st
 
+
 class SoftDiceLoss(nn.Module):
     def __init__(self, weight=None, size_average=True):
         super(SoftDiceLoss, self).__init__()
@@ -117,18 +118,17 @@ class EdgeWeightedLoss(nn.Module):
         self.conv.weight = torch.nn.Parameter(data=kernel)
 
     def forward(self, probs, targets):
-        weights = torch.ones_like(probs)  # self._smoothed_edges(probs)
+        weights = self._smoothed_edges(targets)
         return self.weightedLoss(probs, targets, weights)
 
     def _smoothed_edges(self, x):
-        combined_edges = _get_combined_edges(x)
-        print(x.shape)
-        return self.conv.forward(combined_edges.view([1, 1, 512, 512]))
+        combined_edges = _get_edges(x)
+        return self.conv(combined_edges)
 
 
 def _create_gaussian_kernel(kernlen=5, nsig=3):
     """Returns a 2D Gaussian kernel array. Taken from https://stackoverflow.com/a/29731818"""
-    interval = (2 * nsig + 1.) / (kernlen)
+    interval = (2 * nsig + 1.) / kernlen
     x = np.linspace(-nsig - interval / 2., nsig + interval / 2., kernlen + 1)
     kern1d = np.diff(st.norm.cdf(x))
     kernel_raw = np.sqrt(np.outer(kern1d, kern1d))
@@ -137,15 +137,19 @@ def _create_gaussian_kernel(kernlen=5, nsig=3):
 
 
 def _get_edges(x):
-    xx = torch.zeros_like(x)
-    xy = torch.zeros_like(x)
-    xx[:, :-1, :] = x[:, 1:, :] - x[:, :-1, :]
-    xy[:, :, :-1] = x[:, :, 1:] - x[:, :, :-1]
-    return xx, xy
-
-
-def _get_combined_edges(x):
-    xx, xy = _get_edges(x)
+    xx, xy = _get_edges_x_and_y(x)
     return torch.sqrt((xx * xx) + (xy * xy))
 
 
+def _get_edges_x_and_y(x):
+    """Simple 1st order edge detection with Sobel like operator. Could rewrite as conv2d operation for cleaner code."""
+    xx = torch.zeros_like(x)
+    xy = torch.zeros_like(x)
+    xx[:, :, :-1, :] = x[:, :, 1:, :] - x[:, :, :-1, :]
+    xy[:, :, :, :-1] = x[:, :, :, 1:] - x[:, :, :, :-1]
+
+    # 'edge' padding
+    xx[:, :, -1] = xx[:, :, -2]
+    xy[:, :, :, -1] = xy[:, :, :, -2]
+
+    return xx, xy
