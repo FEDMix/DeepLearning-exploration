@@ -1,0 +1,31 @@
+language: generic
+dist: trusty
+sudo: false
+
+env:
+  matrix:
+    - PYTHON_VERSION=3.6
+  global:
+    - MINCONDA_PYTHON_VERSION=3;
+    - MINCONDA_VERSION="latest"
+    - MINCONDA_LINUX="Linux-x86_64"
+
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
+      MINCONDA_OS=$MINCONDA_LINUX;
+    elif [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+      MINCONDA_OS=$MINCONDA_OSX;
+    fi
+
+  - wget "http://repo.continuum.io/miniconda/Miniconda$MINCONDA_PYTHON_VERSION-$MINCONDA_VERSION-$MINCONDA_OS.sh" -O miniconda.sh;
+  - bash miniconda.sh -b -p $HOME/miniconda
+    - export PATH="$HOME/miniconda/bin:$PATH"
+    - conda config --set always_yes yes
+    - conda update -q conda
+  - conda create -q -n test-environment python=$PYTHON_VERSION pip numpy pytest
+  - source activate test-environment
+  - conda install -q pytorch pytest scipy
+  - conda list
+
+ script:
+  - pytest
