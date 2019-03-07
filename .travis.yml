@@ -25,9 +25,7 @@ before_install:
   - source activate test-environment
   - conda install -q pytorch pytest scipy
   - conda list
-
-install:
-- "echo done"
+  - pip install -qr requirements.txt
 
 script:
 - pytest
