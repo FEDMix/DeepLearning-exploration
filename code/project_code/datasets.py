@@ -53,7 +53,7 @@ class Promise2012_Dataset(data.Dataset):
             image = adjust_contrast(image, 0.5, 2, variance = 0.5)            
             #image = adjust_gamma(image, min_gamma = 0.5, max_gamma = 2, variance = 0.5)
             
-            if np.random.uniform < 0.5:
+            if np.random.uniform(0, 1) < 0.5:
                 image, mask = uniform_rotate(image, mask, -30, 30)
             else:
                 image, mask = shear(image, mask, 30)
